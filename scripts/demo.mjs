@@ -84,7 +84,7 @@ async function main() {
   const vague = await call('initialize_loop_run', { runId: RUN, task: 'make my loop better', userMessages: ['make my loop better', 'use the FULL strip miner and loop-de-loop'] });
   log('questions:', JSON.stringify(vague.questions, null, 2));
   expect('explain-first brief + a few short questions returned once',
-    vague.questions && vague.questions.length >= 3 && vague.questions.length <= 5
+    vague.questions && vague.questions.length >= 5 && vague.questions.length <= 8
     && typeof vague.explanation === 'string' && vague.explanation.length > 80
     && /dashboard is always on/i.test(vague.briefing || '') && vague.dashboardAlwaysOn === true);
   expect('ask-once never poses model/promotion-mode/policy choices to the operator',
@@ -255,7 +255,10 @@ async function main() {
   // ---- summary ----
   const passed = checks.filter((c) => c.ok).length;
   log(`\n=== RESULT: ${passed}/${checks.length} demo checks passed ===`);
-  writeFileSync(join(ROOT, 'proof', 'demo-transcript.txt'), transcript.join('\n') + '\n');
+  // Committed proof artifacts must never embed an absolute home path — genericize the
+  // repo-root prefix so the files are leak-free and byte-identical wherever the repo lives.
+  const generic = (s) => String(s).split(ROOT).join('/path/to/super-loop-mcp');
+  writeFileSync(join(ROOT, 'proof', 'demo-transcript.txt'), generic(transcript.join('\n') + '\n'));
   writeFileSync(join(ROOT, 'proof', 'PROOF.md'), [
     '# super-loop-mcp — live demo proof',
     '',
@@ -264,8 +267,8 @@ async function main() {
     '## Checks',
     ...checks.map((c) => `- ${c.ok ? 'PASS' : 'FAIL'} ${c.label}`),
     '',
-    `Dashboard: \`${dash.path}\``,
-    `Report: \`${rep.path}\``,
+    `Dashboard: \`${generic(dash.path)}\``,
+    `Report: \`${generic(rep.path)}\``,
     `Transcript: \`proof/demo-transcript.txt\``,
     '',
     '_The campaign ended promoted, but not complete. The operator is the only stop condition._'

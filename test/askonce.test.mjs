@@ -13,7 +13,15 @@ test('vague task returns a brief explanation + a few short questions exactly onc
   assert.equal(r.status, 'OK');
   assert.equal(r.runId, 'r1');
   assert.ok(Array.isArray(r.questions));
-  assert.ok(r.questions.length >= 3 && r.questions.length <= 5, `expected 3-5 short questions, got ${r.questions.length}`);
+  assert.ok(r.questions.length >= 5 && r.questions.length <= 8, `expected 5-8 short questions, got ${r.questions.length}`);
+  const qblob = r.questions.join('\n');
+  // the two operator-scope questions must be present, with the runtime warning
+  assert.match(qblob, /whole .*history|set number of loops/i, 'asks the mine-scope question (whole history vs a set number)');
+  assert.match(qblob, /best loops first|order found|in the order/i, 'asks the improvement-order question');
+  assert.match(qblob, /hours, days, or weeks/i, 'warns the run can take hours/days/weeks');
+  // on-start native-continuation notice, so the runtime does not stop the run early
+  assert.match(r.nativeContinuation, /\/loop/, 'tells Claude Code to use /loop');
+  assert.match(r.nativeContinuation, /\/goal/, 'tells Codex to use /goal');
   // Explain-first: the brief must arrive with the questions so the operator knows how to answer.
   assert.ok(typeof r.explanation === 'string' && r.explanation.length > 80, 'a brief explanation is included');
   assert.match(r.briefing, /dashboard is always on/i);

@@ -4,7 +4,7 @@
 // only stop condition.
 import {
   STATUS, BLOCK, VERDICT, DEFAULTS, DEFAULT_PRIMARY_MODEL, KNOWN_FRONTIER_EXAMPLES, STOP_CONDITION_WARNING,
-  LANE_KIND, LANE_STATUS, BUILDER_GATING_ROUTES, MANDATED_LOOPS
+  NATIVE_CONTINUATION_NOTICE, LANE_KIND, LANE_STATUS, BUILDER_GATING_ROUTES, MANDATED_LOOPS
 } from './constants.mjs';
 import { sha256, hash8, nowIso, wordCount, round, mean, stdev, isSafeId } from './util.mjs';
 import { classifyRoute, rejectedRoutes, rejectedBuilderRoutes } from './models.mjs';
@@ -342,13 +342,17 @@ export function createEngine(store, { clock = nowIso } = {}) {
     return words >= 8 && hasMetric;
   }
   // Ask-once questions cover ONLY what the operator alone can answer: the goal,
-  // the starting point, what "better" means, and any task-specific hard limit.
-  // Model routes, promotion mode, benchmark policy, and the standing guarantees
-  // are decided by the tool from the task — never posed back to the operator.
+  // the starting point, how WIDE to mine, what ORDER to improve in, what "better"
+  // means, and any task-specific hard limit. Model routes, promotion mode, benchmark
+  // policy, and the standing guarantees are decided by the tool from the task —
+  // never posed back to the operator. The deeper-explanation offer stays LAST
+  // (wantsDeeperExplanation weights the final answer).
   function generateQuestions() {
     return [
       'In one sentence: what is the end result a successful run must produce?',
-      'Start by MINING your sessions for a new/stronger loop (The Strip Miner Loop), or go straight to IMPROVING an existing loop (Loop-de-loop)? If improving, name the loop/prompt/repo/page to start from.',
+      'Start by MINING your sessions for a new/stronger loop (the Strip Miner), or go straight to IMPROVING an existing loop (Loop-de-loop)? If improving, name the loop/prompt/repo/page to start from.',
+      'If mining: search your WHOLE session history, or stop after finding a set number of loops? Give a number, or say "whole history".',
+      'After mining, improve the BEST loops first, or go in the order found? Heads-up — a run can go for hours, days, or weeks depending on the task and how deep I mine; best-first surfaces value soonest.',
       'In plain English, what would make the result clearly better? I turn this into the frozen, tool-measured benchmark.',
       'Anything task-specific I must not break? The standing guarantees — evidence-gated promotion, a hash-locked baseline, no cost regression, and your authorship — always hold, so name only the extras.',
       'Want me to explain how Sling enforces this before I start, or should I just keep moving after this?'
@@ -361,7 +365,7 @@ export function createEngine(store, { clock = nowIso } = {}) {
     return [
       'Sling is the supervisor/harness, not a prompt. It owns campaign state, the target queue, transitions, benchmark math, the dashboard, and stop policy.',
       'I hold the full private Strip Miner and Loop-de-loop inside the harness and stream them one section at a time, each gated on recorded evidence. A worker model can only PROPOSE artifacts or transitions; a summary, a "done", a confidence claim, or a bare tool call is never progress — only a supervisor-accepted transition counts. I freeze a benchmark from your definition of "better", lock the baseline by hash, measure baseline and challenger on the same yardstick, compute the delta myself, and re-verify from sealed bytes before any promotion.',
-      'You decide the goal, whether to start by mining or by improving an existing loop, what "better" means, and any hard limit. I decide the model routes (default ' + DEFAULT_PRIMARY_MODEL + ', strongest available; builds and in-loop gating route to ' + BUILDER_GATING_ROUTES.join(' or ') + '), the promotion rule, and the internal thresholds — those are mine, so you are not asked to set policy.',
+      'You decide the goal, whether to start by mining or by improving an existing loop, how wide to mine (your whole history or a set number of loops), what order to improve in (best-first or in order), what "better" means, and any hard limit. I decide the model routes (default ' + DEFAULT_PRIMARY_MODEL + ', strongest available; builds and in-loop gating route to ' + BUILDER_GATING_ROUTES.join(' or ') + '), the promotion rule, and the internal thresholds — those are mine, so you are not asked to set policy.',
       'If the Strip Miner saturates I auto-transition to Loop-de-loop or the next lane; a branch retires only after ' + DEFAULTS.branchRetirementBatches + ' valid no-improvement test batches and then pivots — it never ends the campaign. The dashboard stays open the whole run for your Approve/Sludge review, and the run never marks itself complete. You are the only stop condition.'
     ].join(' ');
   }
@@ -469,7 +473,7 @@ export function createEngine(store, { clock = nowIso } = {}) {
       store.save(state);
       const deeper = wantsDeeperExplanation(state.answers) ? deeperExplanation(state) : undefined;
       return ok('Already initialized. Ask-once is satisfied; I will not ask again or mark the run complete by myself.',
-        { runId, runStatus: state.status, model: state.config.model, dashboardPath: dash.path, dashboardAlwaysOn: true, stopCondition: STOP_CONDITION_WARNING, deeperExplanation: deeper, next: continuationDirective(state) });
+        { runId, runStatus: state.status, model: state.config.model, dashboardPath: dash.path, dashboardAlwaysOn: true, stopCondition: STOP_CONDITION_WARNING, nativeContinuation: NATIVE_CONTINUATION_NOTICE, deeperExplanation: deeper, next: continuationDirective(state) });
     }
 
     // First-time configuration.
@@ -503,6 +507,7 @@ export function createEngine(store, { clock = nowIso } = {}) {
         questions: state.questions,
         briefing: 'I will keep the run moving after this. The dashboard is always on and available for review. The model can queue or list review items, but only the operator can Approve or Sludge them from the dashboard. If a mining lane saturates or produces no winners, that is a checkpoint; the next step is to improve or harden the best available loop.',
         stopCondition: STOP_CONDITION_WARNING,
+        nativeContinuation: NATIVE_CONTINUATION_NOTICE,
         dashboardPath: dash.path,
         dashboardAlwaysOn: true,
         continuation: continuationPayload(state),
@@ -520,6 +525,7 @@ export function createEngine(store, { clock = nowIso } = {}) {
       runId, runStatus: state.status, model: state.config.model,
       briefing: 'I will keep the run moving after this. The dashboard is always on and available for review. The model can queue or list review items, but only the operator can Approve or Sludge them from the dashboard. If a mining lane saturates or produces no winners, that is a checkpoint; the next step is to improve or harden the best available loop.',
       stopCondition: STOP_CONDITION_WARNING,
+      nativeContinuation: NATIVE_CONTINUATION_NOTICE,
       deeperExplanation: wantsDeeperExplanation(state.answers) ? deeperExplanation(state) : undefined,
       modelWarning: modelInfo.warning || undefined,
       sotaAdvisory: `Using ${state.config.model.primary} as the most capable available route. Check current SOTA via web search at the start (OpenAI / Anthropic / Google / Z.ai), and override config.model if a stronger frontier model exists. Run host_capability_preflight to see which frontier CLIs are installed locally. Non-frontier routes (haiku/mini/nano/lite/prior-gen) are rejected for full tests.`,

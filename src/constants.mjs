@@ -49,6 +49,14 @@ export const MANDATED_LOOPS = {
 export const STOP_CONDITION_WARNING =
   'WARNING: You are the stop condition. This loop does not stop until you stop it.';
 
+// On-start notice: tell the WORKER its runtime's native continuous/agentic command
+// so the campaign is not stopped early by the runtime itself. Surfaced at init
+// alongside the stop-condition warning; the operator is still the only stop condition.
+export const NATIVE_CONTINUATION_NOTICE =
+  'On start, engage your runtime’s native continuous mode so this run is not stopped early: ' +
+  'Claude Code → /loop, Codex → /goal, other runtimes → your equivalent continuous/agentic loop command. ' +
+  'Then keep working the phase gate until the operator stops you — do not self-complete.';
+
 // Default model the server proposes when the operator does not name one.
 // "the most capable available model" — the operator may override at init, and
 // the agent is told to web-search current SOTA before committing.

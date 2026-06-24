@@ -7,7 +7,9 @@ tools: initialize_loop_run, loop_start, request_next_phase, loop_next, observati
 === 2. Ask-once (vague task → questions) ===
 questions: [
   "In one sentence: what is the end result a successful run must produce?",
-  "Start by MINING your sessions for a new/stronger loop (The Strip Miner Loop), or go straight to IMPROVING an existing loop (Loop-de-loop)? If improving, name the loop/prompt/repo/page to start from.",
+  "Start by MINING your sessions for a new/stronger loop (the Strip Miner), or go straight to IMPROVING an existing loop (Loop-de-loop)? If improving, name the loop/prompt/repo/page to start from.",
+  "If mining: search your WHOLE session history, or stop after finding a set number of loops? Give a number, or say \"whole history\".",
+  "After mining, improve the BEST loops first, or go in the order found? Heads-up — a run can go for hours, days, or weeks depending on the task and how deep I mine; best-first surfaces value soonest.",
   "In plain English, what would make the result clearly better? I turn this into the frozen, tool-measured benchmark.",
   "Anything task-specific I must not break? The standing guarantees — evidence-gated promotion, a hash-locked baseline, no cost regression, and your authorship — always hold, so name only the extras.",
   "Want me to explain how Sling enforces this before I start, or should I just keep moving after this?"
@@ -53,7 +55,7 @@ saturation → mine lane → loop-de-loop
   PASS · campaign_status reports lanes; pending review never blocks; 30-batch retirement; builder routes
 
 === 5. Benchmark-first: hash-lock baseline, freeze scorecard, set the bar ===
-baseline bar: {"tokenCost":1000,"quality":0.7,"source":"tool","qualityAuthority":"tool-computed","measurementRef":"art-002","ts":"2026-06-24T11:37:42.433Z"} · qAuthority tool-computed
+baseline bar: {"tokenCost":1000,"quality":0.7,"source":"tool","qualityAuthority":"tool-computed","measurementRef":"art-002","ts":"2026-06-24T14:47:39.647Z"} · qAuthority tool-computed
   PASS · benchmark frozen + tool-computed bar set
 
 === 5b. A caller-reported (typed) measurement is refused by the gate ===
