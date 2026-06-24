@@ -1236,7 +1236,10 @@ export function createEngine(store, { clock = nowIso } = {}) {
     if (action === 'add') {
       const rid = nextId(state, 'review', 'rev');
       const item = args.item || {};
-      state.humanReviews.push({ id: rid, ts: clock(), status: 'PENDING', title: item.title || rid, kind: item.kind || 'change', summary: item.summary || '', hypothesisId: item.hypothesisId || null, evidenceRef: item.evidenceRef || null, notes: null });
+      // loopId + loopContent let the model PROPOSE a concrete loop adoption for operator
+      // review: "here is the improved loop text; adopt it as <loopId> if you Approve".
+      // The model can only queue this; applying it is operator-only (api.operator).
+      state.humanReviews.push({ id: rid, ts: clock(), status: 'PENDING', title: item.title || rid, kind: item.kind || 'change', summary: item.summary || '', hypothesisId: item.hypothesisId || null, evidenceRef: item.evidenceRef || null, loopId: item.loopId ? String(item.loopId) : null, loopContent: typeof item.loopContent === 'string' ? item.loopContent : null, notes: null });
       requireContinuation(state, 'human_review_queued', `Review item ${rid} was queued; dashboard review cannot block deterministic progress.`);
       state.updatedAt = clock();
       const dash = writeDashboardForState(state);
@@ -1369,6 +1372,98 @@ export function createEngine(store, { clock = nowIso } = {}) {
   }
 
   // ---- registry ----------------------------------------------------------
+  // ============== operator-gated loop adoption (NOT model-callable) ========
+  // The dashboard captures the operator's Approve/Sludge and EXPORTS decisions.json;
+  // these functions CONSUME that operator decision and actually apply it. Approving a
+  // loop-adoption review installs the improved loop as a new VERSION of a CUSTOM loop
+  // (the prior version is archived for rollback), which loop_start then streams next
+  // cycle. The hash-locked mandated loops (Strip Miner / Loop-de-loop) are immutable
+  // and are NEVER touched (canonical is never silently overwritten). Applying a
+  // decision is NON-BLOCKING — it never stops a run; the operator (or full
+  // exhaustion) is still the only stop. These live under api.operator (an object, not
+  // a top-level function) so a worker model cannot reach them through the tools/call
+  // dispatch (engine[name]) and adopt its own work — adoption is the operator's.
+  function installLoopVersion(loopId, content, meta) {
+    const prior = store.readLoop(loopId);
+    const built = makeCustomLoop({ id: loopId, content });
+    const version = ((prior && prior.version) || 0) + 1;
+    const history = (prior && Array.isArray(prior.history)) ? prior.history.slice() : [];
+    if (prior) history.push({ version: prior.version || 1, sha256: prior.sha256, content: prior.content, supersededAt: meta.ts, supersededBy: version });
+    const record = {
+      id: loopId,
+      title: (prior && prior.title) || meta.title || loopId,
+      trigger: (prior && prior.trigger) || `/loop ${loopId}`,
+      role: (prior && prior.role) || 'improve', aka: [], origin: 'custom',
+      content, sha256: built.sha256, lines: built.lines, sections: built.sections.length,
+      version, adopted: true, adoptedFrom: meta.from || null, adoptedAt: meta.ts,
+      registeredAt: (prior && prior.registeredAt) || meta.ts, history
+    };
+    store.writeLoop(record);
+    return { loopId, version, sha256: built.sha256, sections: built.sections.length, replacedVersion: prior ? (prior.version || 1) : null };
+  }
+  function adoptLoop({ loopId, content, from } = {}) {
+    const id = String(loopId || '').toLowerCase().trim();
+    if (!isSafeId(id)) return { ok: false, reason: `invalid loop id "${loopId}"` };
+    if (isMandatedId(id)) return { ok: false, reason: `"${id}" is a hash-locked mandated loop (the Strip Miner / Loop-de-loop) and is immutable. Adopt the improvement under a NEW custom loop id; the canonical loop is never overwritten.` };
+    const text = String(content == null ? '' : content);
+    if (text.trim().length < 40) return { ok: false, reason: 'adopted loop content is too small to phase-gate (provide the real multi-section loop text)' };
+    let built;
+    try { built = makeCustomLoop({ id, content: text }); } catch (e) { return { ok: false, reason: `adopted loop rejected: ${e.message}` }; }
+    if (built.sections.length < 2) return { ok: false, reason: `adopted loop produced ${built.sections.length} streamable section(s); phase-gated streaming needs >= 2` };
+    return { ok: true, ...installLoopVersion(id, text, { ts: clock(), from: from || null }) };
+  }
+  function rollbackLoop({ loopId } = {}) {
+    const id = String(loopId || '').toLowerCase().trim();
+    if (!isSafeId(id)) return { ok: false, reason: `invalid loop id "${loopId}"` };
+    if (isMandatedId(id)) return { ok: false, reason: `"${id}" is a mandated loop; it is never versioned or rolled back` };
+    const cur = store.readLoop(id);
+    if (!cur) return { ok: false, reason: `no custom loop "${id}" to roll back` };
+    const hist = Array.isArray(cur.history) ? cur.history : [];
+    if (!hist.length) return { ok: false, reason: `"${id}" has no prior version to roll back to (only one version exists)` };
+    const prev = hist[hist.length - 1];
+    const info = installLoopVersion(id, prev.content, { ts: clock(), from: { rollbackToVersion: prev.version } });
+    return { ok: true, loopId: id, restoredFromVersion: prev.version, newVersion: info.version };
+  }
+  function applyDashboardDecisions({ runId, decisions } = {}) {
+    if (!isSafeId(runId)) return { ok: false, reason: `invalid runId "${runId}"` };
+    if (!store.exists(runId)) return { ok: false, reason: `no run "${runId}"` };
+    const state = store.load(runId);
+    const ts = clock();
+    const decided = (decisions && typeof decisions === 'object') ? decisions : {};
+    const applied = [];
+    for (const reviewId of Object.keys(decided)) {
+      const d = decided[reviewId] || {};
+      const review = (state.humanReviews || []).find((r) => r.id === reviewId);
+      if (!review) { applied.push({ reviewId, skipped: 'no such review' }); continue; }
+      if (review.status !== 'PENDING') { applied.push({ reviewId, skipped: `already ${review.status}` }); continue; }
+      if (d.decision === 'approve') {
+        if (review.loopId && typeof review.loopContent === 'string' && review.loopContent.trim()) {
+          const a = adoptLoop({ loopId: review.loopId, content: review.loopContent, from: { reviewId, runId } });
+          if (!a.ok) { applied.push({ reviewId, error: a.reason }); continue; }
+          // drop any pinned snapshot of this loop in THIS run so the next loop_start
+          // re-pins the freshly adopted version (a fresh run reads it from the store).
+          if (state.customLoops && state.customLoops[review.loopId]) delete state.customLoops[review.loopId];
+          review.status = 'APPROVED'; review.resolvedAt = ts; review.notes = d.notes || review.notes;
+          review.adoption = { loopId: a.loopId, version: a.version, sha256: a.sha256 };
+          logEvent(state, 'loop_adopted', { reviewId, loopId: a.loopId, version: a.version });
+          applied.push({ reviewId, adopted: { loopId: a.loopId, version: a.version }, enforcedVia: `loop_start { loop:"${a.loopId}" }` });
+        } else {
+          review.status = 'APPROVED'; review.resolvedAt = ts; review.notes = d.notes || review.notes;
+          applied.push({ reviewId, approved: true, note: 'informational review (no loop to adopt)' });
+        }
+      } else if (d.decision === 'sludge') {
+        review.status = 'SLUDGE'; review.resolvedAt = ts; review.notes = d.notes || review.notes;
+        applied.push({ reviewId, sludged: true });
+      } else {
+        applied.push({ reviewId, skipped: `unknown decision "${d.decision}"` });
+      }
+    }
+    state.updatedAt = ts;
+    const dash = writeDashboardForState(state);
+    store.save(state);
+    return { ok: true, runId, applied, dashboardPath: dash.path, note: 'Operator dashboard decisions applied. The campaign was never paused for this — the operator (or full exhaustion) remains the only stop.' };
+  }
+
   const api = {
     initialize_loop_run,
     loop_register,
@@ -1397,6 +1492,10 @@ export function createEngine(store, { clock = nowIso } = {}) {
     // exposed for tooling/tests
     _loopSummary: loopSummary
   };
+  // Operator-only surface — consumed by the apply-decisions CLI and the autonomous
+  // supervisor, NEVER by the model. It is an object (not a top-level function), so the
+  // tools/call dispatch (`engine[name]`, function-typed only) cannot reach it.
+  api.operator = { adoptLoop, rollbackLoop, applyDashboardDecisions };
   // The autonomous supervisor: one call drives the whole campaign (intake → mine →
   // improve targets → bank Stones → advance/retire → re-mine) with the executor as
   // the real worker, validating every worker output through the enforcement boundary.
