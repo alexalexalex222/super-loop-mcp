@@ -1,0 +1,94 @@
+
+=== 1. MCP handshake ===
+server: super-loop 1.0.0 · protocol 2025-06-18
+tools: initialize_loop_run, loop_start, request_next_phase, loop_next, observation_record, artifact_record, benchmark_propose, benchmark_select, benchmark_run, register_hypotheses, test_hypothesis, execute_full_test, reverify_run, promotion_request, cycle_decision_request, run_campaign, report_saturation, campaign_status, continue_run, human_review_request, update_dashboard, report_export, loop_register, loop_library, host_capability_preflight
+  PASS · server lists all 25 tools incl. autonomous driver + supervisor lanes + live executor + loop library
+
+=== 2. Ask-once (vague task → questions) ===
+questions: [
+  "In one sentence: what is the end result a successful run must produce?",
+  "Start by MINING your sessions for a new/stronger loop (The Strip Miner Loop), or go straight to IMPROVING an existing loop (Loop-de-loop)? If improving, name the loop/prompt/repo/page to start from.",
+  "In plain English, what would make the result clearly better? I turn this into the frozen, tool-measured benchmark.",
+  "Anything task-specific I must not break? The standing guarantees — evidence-gated promotion, a hash-locked baseline, no cost regression, and your authorship — always hold, so name only the extras.",
+  "Want me to explain how Sling enforces this before I start, or should I just keep moving after this?"
+]
+  PASS · explain-first brief + a few short questions returned once
+  PASS · ask-once never poses model/promotion-mode/policy choices to the operator
+
+=== 3. Answer once → INITIALIZED (never asks again) ===
+status: OK · model: claude-opus-4-8
+  PASS · initialized with no further questions
+  PASS · init surfaces the stop-condition notice up front
+
+=== 3b. Deeper explanation honored only when asked (leak #2) ===
+  PASS · no deeper explanation when the operator says keep moving
+  PASS · answering the last question yes returns a deeper explanation, no re-ask/no block
+
+=== 3c. Host capability preflight (PATH only, no exec) ===
+installed frontier CLIs on PATH: claude, codex, gemini, opencode
+  PASS · preflight reports known routes via PATH detection, no command executed
+
+=== 3d. Local loop library — register + list + stream a custom loop (leak #1) ===
+registered: demo-custom-loop · sections 3 · sha256 a7425bef9353
+  PASS · custom loop registered, hash-locked, phase-gated
+  PASS · cannot overwrite a mandated hash-locked loop
+  PASS · library lists 2 mandated + the custom loop
+  PASS · custom loop streams section 0 through the same phase gate
+  PASS · custom loop also blocks PHASE_SKIP without evidence
+  PASS · evidence unlocks the custom loop next section
+
+=== 4. Phase-gated streaming of the actual Strip Miner ===
+phase 1/24: Overview
+section[0] head: "/loop loop-de-loop\n\nName: The Strip Miner Loop\n\nStarting from {dir}, mine every operator-authorized accessible agent-ses"
+  PASS · section 0 carries the /loop loop-de-loop trigger
+  PASS · only one section streamed (not the whole 345-line file)
+skip attempt: BLOCKED PHASE_SKIP
+  PASS · request_next_phase BLOCKED without evidence (PHASE_SKIP)
+advanced to phase 2/24: WORKSPACE AND SOURCE DISCOVERY
+  PASS · evidence unlocks the next section
+
+=== 4b. Supervisor: Strip Miner saturation AUTO-TRANSITIONS to Loop-de-loop (never stops) ===
+saturation → mine lane → loop-de-loop
+  PASS · saturation auto-transitions to loop-de-loop, not a stop
+  PASS · campaign_status reports lanes; pending review never blocks; 30-batch retirement; builder routes
+
+=== 5. Benchmark-first: hash-lock baseline, freeze scorecard, set the bar ===
+baseline bar: {"tokenCost":1000,"quality":0.7,"source":"tool","qualityAuthority":"tool-computed","measurementRef":"art-002","ts":"2026-06-24T11:37:42.433Z"} · qAuthority tool-computed
+  PASS · benchmark frozen + tool-computed bar set
+
+=== 5b. A caller-reported (typed) measurement is refused by the gate ===
+  PASS · caller-reported measurement rejected (MEASUREMENT_AUTHORITY)
+
+=== 6. Hypotheses: reject non-frontier, accept 3–5 frontier ===
+mini attempt: BLOCKED BANNED_ROUTE
+  PASS · haiku route rejected (BANNED_ROUTE)
+  PASS · Codex as in-loop BUILDER is refused (builds route to Opus 4.8 / GLM 5.2)
+registered: hyp-001, hyp-002, hyp-003
+  PASS · 3 frontier hypotheses accepted
+
+=== 7. Full test (3 frontier agents, tool-measured) ===
+full test verdict: MOVED_FRONTIER · quality 0.8167 vs bar 0.70 · qAuthority tool-computed · quality +0.1167 with cost change +0.0083 (within tolerance)
+  PASS · measured full test moved the frontier (tool-computed quality)
+
+=== 8. Promotion needs reverify; model-report path stays blocked ===
+  PASS · promotion blocked before reverify
+  PASS · deep reverify passes on sealed artifacts
+promotion: OK · PROMOTE hyp-001 (QUALITY_FRONTIER): quality +0.1167 with cost change +0.0083 (within tolerance). Recorded as internal champion. Changing the canonical loop still requires operator authority through the dashboard. The campaign remains active.
+  PASS · tool-measured + reverified winner promoted
+  PASS · hypothesis with no score matrix is blocked
+
+=== 9. The hook refuses self-completion ===
+  PASS · model cannot declare the campaign perfect/complete
+  PASS · blocked completion creates a continuation obligation
+  PASS · continue_run records intent but does not clear without real progress
+  PASS · a real progress tool clears the continuation obligation
+
+=== 10. Dashboard + report ===
+  PASS · model-callable human review resolve is blocked (dashboard-only)
+dashboard: /path/to/super-loop-mcp/proof/.super-loop-demo/runs/demo-run/dashboard.html
+  PASS · dashboard written with the stop-condition notice
+report: /path/to/super-loop-mcp/proof/.super-loop-demo/runs/demo-run/report.md
+  PASS · report exported
+  PASS · report export leaves a continuation obligation
+
+=== RESULT: 38/38 demo checks passed ===

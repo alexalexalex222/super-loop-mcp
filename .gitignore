@@ -1,0 +1,9 @@
+# local run state + generated proof artifacts
+.super-loop/
+proof/.super-loop-demo/
+node_modules/
+*.log
+.DS_Store
+
+# local working backups (never publish)
+.backup-*/
