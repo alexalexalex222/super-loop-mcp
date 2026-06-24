@@ -1463,6 +1463,26 @@ export function createEngine(store, { clock = nowIso } = {}) {
     store.save(state);
     return { ok: true, runId, applied, dashboardPath: dash.path, note: 'Operator dashboard decisions applied. The campaign was never paused for this — the operator (or full exhaustion) remains the only stop.' };
   }
+  // Auto-apply: read the operator's exported decisions dropped into the run inbox
+  // (runs/<runId>/inbox-decisions.json), apply them, and archive the file so it is not
+  // re-applied. The autonomous supervisor calls this each tick → dashboard approvals
+  // take effect with NO command and NO model involvement, and the run is never paused.
+  function applyInboxDecisions(runId) {
+    if (!isSafeId(runId) || !store.exists(runId)) return { ok: true, inbox: false, applied: [] };
+    const raw = store.readRunFile(runId, 'inbox-decisions.json');
+    if (raw == null) return { ok: true, inbox: false, applied: [] };
+    const stamp = String(clock()).replace(/[:.]/g, '-');
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (e) {
+      store.moveRunFile(runId, 'inbox-decisions.json', `inbox-decisions.invalid-${stamp}.json`);
+      return { ok: false, inbox: true, applied: [], reason: `inbox decisions JSON invalid: ${e.message}` };
+    }
+    const res = applyDashboardDecisions({ runId, decisions: (payload && payload.decisions) || payload || {} });
+    store.moveRunFile(runId, 'inbox-decisions.json', `inbox-decisions.applied-${stamp}.json`);
+    return { ...res, inbox: true };
+  }
 
   const api = {
     initialize_loop_run,
@@ -1495,7 +1515,7 @@ export function createEngine(store, { clock = nowIso } = {}) {
   // Operator-only surface — consumed by the apply-decisions CLI and the autonomous
   // supervisor, NEVER by the model. It is an object (not a top-level function), so the
   // tools/call dispatch (`engine[name]`, function-typed only) cannot reach it.
-  api.operator = { adoptLoop, rollbackLoop, applyDashboardDecisions };
+  api.operator = { adoptLoop, rollbackLoop, applyDashboardDecisions, applyInboxDecisions };
   // The autonomous supervisor: one call drives the whole campaign (intake → mine →
   // improve targets → bank Stones → advance/retire → re-mine) with the executor as
   // the real worker, validating every worker output through the enforcement boundary.

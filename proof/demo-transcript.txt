@@ -55,7 +55,7 @@ saturation → mine lane → loop-de-loop
   PASS · campaign_status reports lanes; pending review never blocks; 30-batch retirement; builder routes
 
 === 5. Benchmark-first: hash-lock baseline, freeze scorecard, set the bar ===
-baseline bar: {"tokenCost":1000,"quality":0.7,"source":"tool","qualityAuthority":"tool-computed","measurementRef":"art-002","ts":"2026-06-24T15:21:18.358Z"} · qAuthority tool-computed
+baseline bar: {"tokenCost":1000,"quality":0.7,"source":"tool","qualityAuthority":"tool-computed","measurementRef":"art-002","ts":"2026-06-24T16:07:10.763Z"} · qAuthority tool-computed
   PASS · benchmark frozen + tool-computed bar set
 
 === 5b. A caller-reported (typed) measurement is refused by the gate ===

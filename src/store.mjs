@@ -94,6 +94,23 @@ export function createStore(homeDir) {
       atomicWrite(full, contents);
       return full;
     },
+    readRunFile(runId, relPath) {
+      const full = runFilePath(runId, relPath);
+      if (!existsSync(full)) return null;
+      try { return readFileSync(full, 'utf8'); } catch { return null; }
+    },
+    runFileExists(runId, relPath) {
+      return existsSync(runFilePath(runId, relPath));
+    },
+    // Atomically move a run file (used to archive a consumed inbox so it is not re-applied).
+    moveRunFile(runId, fromRel, toRel) {
+      const from = runFilePath(runId, fromRel);
+      if (!existsSync(from)) return false;
+      const to = runFilePath(runId, toRel);
+      mkdirSync(dirname(to), { recursive: true });
+      renameSync(from, to);
+      return true;
+    },
 
     // ---- custom local loop library (user-added loops) ----------------------
     // Lives under <home>/custom-loops, separate from runs. The mandated, bundled

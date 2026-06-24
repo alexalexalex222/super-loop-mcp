@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshEngine, SPECIFIC_TASK } from './helpers.mjs';
+import { runSupervisedCampaign } from '../src/supervisor.mjs';
 
 const LOOP_A = [
   'PHASE ONE INTAKE',
@@ -123,4 +124,67 @@ test('adoption is operator-only: not reachable as a model-callable tool', () => 
   assert.equal(typeof engine.applyDashboardDecisions, 'undefined');
   assert.equal(typeof engine.operator, 'object');
   assert.equal(typeof engine.operator.applyDashboardDecisions, 'function');
+  assert.equal(typeof engine.operator.applyInboxDecisions, 'function');
+});
+
+// ---- increment 2: the supervisor auto-applies decisions dropped into the run inbox ----
+
+test('inbox auto-apply: dropping decisions into the run inbox adopts, then archives the file', () => {
+  const { engine, store } = freshEngine();
+  initd(engine, 'rin');
+  const q = engine.human_review_request({
+    runId: 'rin', action: 'add',
+    item: { kind: 'loop-adoption', loopId: 'inbox-miner', loopContent: LOOP_A }
+  });
+  // the operator saves the dashboard's exported decisions.json into the run inbox
+  store.writeRunFile('rin', 'inbox-decisions.json', JSON.stringify({ runId: 'rin', decisions: { [q.reviewId]: { decision: 'approve' } } }));
+
+  const r = engine.operator.applyInboxDecisions('rin');
+  assert.equal(r.ok, true);
+  assert.equal(r.inbox, true);
+  assert.equal(r.applied[0].adopted.loopId, 'inbox-miner');
+  assert.equal(store.load('rin').humanReviews.find((x) => x.id === q.reviewId).status, 'APPROVED');
+  assert.equal(store.readLoop('inbox-miner').content, LOOP_A, 'the adopted loop is installed');
+  // consumed: the inbox file is archived so it is never re-applied
+  assert.equal(store.runFileExists('rin', 'inbox-decisions.json'), false);
+  assert.equal(engine.operator.applyInboxDecisions('rin').inbox, false, 'second drain is a no-op');
+});
+
+test('inbox auto-apply is a no-op when there is no inbox file', () => {
+  const { engine } = freshEngine();
+  initd(engine, 'rno');
+  const r = engine.operator.applyInboxDecisions('rno');
+  assert.equal(r.inbox, false);
+  assert.deepEqual(r.applied, []);
+});
+
+test('inbox auto-apply archives invalid JSON without throwing or applying', () => {
+  const { engine, store } = freshEngine();
+  initd(engine, 'rbad');
+  store.writeRunFile('rbad', 'inbox-decisions.json', '{not valid json');
+  const r = engine.operator.applyInboxDecisions('rbad');
+  assert.equal(r.ok, false);
+  assert.equal(r.inbox, true);
+  assert.match(r.reason, /invalid/i);
+  assert.equal(store.runFileExists('rbad', 'inbox-decisions.json'), false, 'bad inbox is archived, not left to re-trigger');
+});
+
+test('the SUPERVISOR drains the inbox each tick — an approval dropped in is auto-applied with no command', () => {
+  const { engine, store } = freshEngine();
+  // a pending loop-adoption review + an approve dropped into the inbox, before any campaign runs
+  initd(engine, 'sup');
+  const q = engine.human_review_request({
+    runId: 'sup', action: 'add',
+    item: { kind: 'loop-adoption', loopId: 'sup-miner', loopContent: LOOP_A }
+  });
+  store.writeRunFile('sup', 'inbox-decisions.json', JSON.stringify({ decisions: { [q.reviewId]: { decision: 'approve' } } }));
+
+  // run the supervisor on that run with NO targets → it performs its per-tick inbox
+  // drain and returns. No CLI, no model action — the supervisor applied the decision.
+  const mockWorker = (contract) => ({ route: (contract && contract.route) || 'claude-opus-4-8', artifacts: [{ role: 'runlog', content: 'ok' }], finalOutput: 'ok' });
+  runSupervisedCampaign(engine, { runId: 'sup', targets: [] }, { worker: mockWorker, maxBatches: 1 });
+
+  assert.equal(store.readLoop('sup-miner').content, LOOP_A, 'supervisor auto-adopted the approved loop');
+  assert.equal(store.load('sup').humanReviews.find((x) => x.id === q.reviewId).status, 'APPROVED');
+  assert.equal(store.runFileExists('sup', 'inbox-decisions.json'), false, 'inbox consumed by the supervisor');
 });

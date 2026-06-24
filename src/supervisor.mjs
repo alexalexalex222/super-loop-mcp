@@ -211,7 +211,26 @@ export function runSupervisedCampaign(engine, config = {}, hooks = {}) {
 
   const stopped = () => stopCheck() || batchesTotal >= maxBatches;
 
+  // Each tick, auto-apply any operator decisions dropped into a run inbox (dashboard
+  // Approve/Sludge → exported decisions.json saved to runs/<runId>/inbox-decisions.json).
+  // Covers the top-level run and every per-improve sub-run. Operator-driven, model-
+  // independent, NON-BLOCKING: a failure here is logged and never stops the campaign.
+  const allRunIds = new Set([runId]);
+  const drainInbox = () => {
+    const op = engine.operator;
+    if (!op || typeof op.applyInboxDecisions !== 'function') return;
+    for (const rid of allRunIds) {
+      try {
+        const r = op.applyInboxDecisions(rid);
+        if (r && r.inbox && r.applied && r.applied.length) tx('operator_decisions_applied', { runId: rid, count: r.applied.length, note: 'dashboard approvals auto-applied between ticks; campaign never paused' });
+        else if (r && r.inbox && r.reason) tx('operator_decisions_error', { runId: rid, reason: r.reason });
+      } catch (e) { tx('inbox_drain_error', { runId: rid, reason: e.message }); }
+    }
+  };
+  drainInbox();
+
   while (queue.length && !stopped()) {
+    drainInbox();
     const target = queue.shift();
 
     if (target.kind === 'mine') {
@@ -231,6 +250,7 @@ export function runSupervisedCampaign(engine, config = {}, hooks = {}) {
     } else if (target.kind === 'improve') {
       improveIdx++;
       const subRunId = `${runId}-t${improveIdx}`; // each branch is its own measured run
+      allRunIds.add(subRunId); // its inbox is drained too, so the operator can adopt a per-branch win
       const r = runImproveTarget(engine, subRunId, target, { worker, log, stopped, noImprovePolicy, task: config.task, answers: config.answers, requirements: config.requirements, onBatch: () => { batchesTotal++; } });
       transcript.push(...r.transcript);
       if (r.stone) { stones.push(r.stone); tx('stone_banked', { stone: r.stone.id }); }

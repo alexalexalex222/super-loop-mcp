@@ -261,10 +261,10 @@ export function renderDashboard(state) {
 
     <section>
       <h2>Human review · Approve / Sludge</h2>
-      <p class="muted">Approve / Sludge is dashboard-only. The model can queue and list these items, but it can never resolve its own human-review gate. Pending review never blocks the campaign — the supervisor keeps running the next valid lane while items wait here.</p>
+      <p class="muted">Approve / Sludge is dashboard-only. The model can queue and list these items, but it can never resolve its own human-review gate. Pending review never blocks the campaign — the supervisor keeps running the next valid lane while items wait here. <strong>To apply:</strong> Approve, click Export, and save the file as <code>inbox-decisions.json</code> in this run's folder — the running supervisor auto-applies it with no command. Approving a loop-adoption item installs the improved loop as a new version (rollback kept), enforced next cycle; the campaign never pauses.</p>
       <div class="reviews">${reviewCards}</div>
       <div class="exportbar">
-        <button type="button" id="exportBtn" class="btn" disabled>Export decisions.json</button>
+        <button type="button" id="exportBtn" class="btn" disabled>Export inbox-decisions.json</button>
         <button type="button" id="copyBtn" class="btn" disabled>Copy decisions</button>
         <span id="exportNote" class="muted small"></span>
       </div>
@@ -311,8 +311,8 @@ export function renderDashboard(state) {
       exportBtn.addEventListener('click', function(){
         var blob = new Blob([payload()], { type: 'application/json' });
         var url = URL.createObjectURL(blob);
-        var a = document.createElement('a'); a.href = url; a.download = 'decisions.json'; a.click();
-        URL.revokeObjectURL(url); note.textContent = 'Saved dashboard decisions locally. Model-callable tools cannot approve or sludge reviews.';
+        var a = document.createElement('a'); a.href = url; a.download = 'inbox-decisions.json'; a.click();
+        URL.revokeObjectURL(url); note.textContent = 'Saved inbox-decisions.json — drop it in this run folder (runs/<runId>/) and the running supervisor auto-applies it. No command; the model cannot approve its own work.';
       });
       copyBtn.addEventListener('click', function(){
         if(navigator.clipboard){ navigator.clipboard.writeText(payload()).then(function(){ note.textContent='Copied to clipboard.'; }); }
