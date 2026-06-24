@@ -283,6 +283,20 @@ export function renderDashboard(state) {
       var decisions = {};
       var live = document.getElementById('live');
       function announce(m){ live.textContent = m; }
+      // When this dashboard is SERVED (http), a click applies itself: POST the decision
+      // to /apply, which the running campaign adopts on its next tick — no file, no
+      // command. Opened as a file (file://) there is no server, so fall back to Export.
+      function postDecision(id, act){
+        if (location.protocol === 'file:') return;
+        try {
+          var run = JSON.parse(document.getElementById('run-data').textContent);
+          fetch('/apply', { method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ runId: run.runId, reviewId: id, decision: act }) })
+            .then(function(r){ return r.json(); })
+            .then(function(){ announce(act + ' sent for ' + id + ' — the supervisor adopts it on its next tick. No file needed.'); })
+            .catch(function(){ announce('Could not reach the dashboard server — use Export instead.'); });
+        } catch(e){}
+      }
       document.querySelectorAll('.review').forEach(function(card){
         var id = card.getAttribute('data-review');
         var statusEl = card.querySelector('[data-status]');
@@ -296,6 +310,7 @@ export function renderDashboard(state) {
             statusEl.className = 'chip ' + (act === 'approve' ? 'good' : 'bad');
             enableExport();
             announce('Recorded ' + act + ' for ' + id);
+            postDecision(id, act);
           });
         });
         if(notes){ notes.addEventListener('input', function(){ if(decisions[id]) decisions[id].notes = notes.value || null; }); }

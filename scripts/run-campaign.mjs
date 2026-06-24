@@ -17,6 +17,8 @@
 //     ],
 //     "remineOnEmpty": true }
 import { readFileSync, existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { buildServer } from '../src/server.mjs';
 import { runSupervisedCampaign } from '../src/supervisor.mjs';
 import { executorWorker, isExecEnabled } from '../src/executor.mjs';
@@ -41,6 +43,24 @@ const { engine } = buildServer(home ? { home } : {});
 
 process.stdout.write(`super-loop autonomous supervisor · run ${runId}\n`);
 process.stdout.write(stopFile ? `stop condition: create ${stopFile} (you are the only stop)\n` : 'stop condition: Ctrl-C (no stop-file set; you are the only stop)\n');
+
+// Serve the dashboard so review is click-and-done: clicking Approve/Sludge POSTs to the
+// server, which queues it to the run inbox; this campaign's per-tick drain adopts it.
+// One command, no files. Disable with --no-dashboard.
+let dashChild = null;
+if (!process.argv.includes('--no-dashboard')) {
+  const dashPort = arg('--dashboard-port', process.env.SUPER_LOOP_DASHBOARD_PORT || '8787');
+  const dashArgs = [fileURLToPath(new URL('./dashboard-server.mjs', import.meta.url)), '--port', String(dashPort)];
+  if (home) dashArgs.push('--home', home);
+  try {
+    dashChild = spawn(process.execPath, dashArgs, { stdio: 'inherit' });
+    const killDash = () => { try { if (dashChild && !dashChild.killed) dashChild.kill(); } catch { /* ignore */ } };
+    process.on('exit', killDash);
+    process.on('SIGINT', () => { killDash(); process.exit(130); });
+    process.on('SIGTERM', () => { killDash(); process.exit(143); });
+    process.stdout.write(`dashboard (click-and-done): http://127.0.0.1:${dashPort} — open it, click Approve/Sludge, done. No files.\n`);
+  } catch (e) { process.stdout.write(`(dashboard server not started: ${e.message})\n`); }
+}
 
 const result = runSupervisedCampaign(engine, { ...config, runId }, {
   worker: executorWorker,
